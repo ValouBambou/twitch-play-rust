@@ -27,12 +27,12 @@ password = "oauth:yourtokenfromtwitchapps"
 cooldown = 30
 prefix = "!"
 commands = [
-  "UpArrow",
-  "DownArrow",
-  "LeftArrow",
-  "RightArrow",
-  "Space",
-  "Escape",
+  "up",
+  "down",
+  "left",
+  "right",
+  "space",
+  "esc",
   "h",
   "j",
   "k",
