@@ -15,7 +15,7 @@ Add a `config.toml` file with the corresponding info :
 - `password`: the auth token you get by connecting to [https://twitchapps.com/tmi/](https://twitchapps.com/tmi/).
 - `cooldown`: the number of seconds for the chat to vote.
 - `prefix`: the beginning of all commands to type in the chat.
-- `commands`: the list of keys that the chat should control. For simple key just put the character and for special key add the name of the key. It should be the exact same names as Enigo Key enum you can check [here](https://docs.rs/enigo/latest/enigo/enum.Key.html) (note: use Meta instead of Windows/Command/Super key).
+- `commands`: the list of keys that the chat should control. For simple key just put the character and for special key add the name of the key. Some keys have abreviation (arrow keys: "up", "down", "left", "right", escape key :"esc). For others keys, it's the lowercase name from the Key enum [here](https://docs.rs/enigo/latest/enigo/enum.Key.html) (note: use "meta" instead of Windows/Command/Super key since they are deprecated).
 
 ### Example of config file
 
