@@ -25,9 +25,16 @@ lazy_static! {
     static ref PASS: String = format!("PASS {}\n", &CONFIG.password);
     static ref NICK: String = format!("NICK {}\n", &CONFIG.name);
     static ref JOIN: String = format!("JOIN #{}\n", *CHANNEL);
-    static ref PREFIX: &'static String = &CONFIG.prefix;
-    static ref CMDS_LIST: String = CONFIG.commands.join("|");
-    static ref CMD_PATTERN: String = format!("PRIVMSG #{} :{}({})", *CHANNEL, *PREFIX, *CMDS_LIST);
+    static ref CMDS_RE: String = CONFIG
+        .commands
+        .keys()
+        .fold(String::new(), |a, b| a + b + "|");
+    static ref KEY_FROM_CMD: HashMap<String, Key> = CONFIG
+        .commands
+        .iter()
+        .map(|(cmd, key)| (cmd.to_string(), key_from_string(key.to_string())))
+        .collect();
+    static ref CMD_PATTERN: String = format!("PRIVMSG #{} :({})", *CHANNEL, *CMDS_RE);
     static ref CMD_RE: Regex = Regex::new(&CMD_PATTERN).unwrap();
 }
 
@@ -37,8 +44,7 @@ struct Config {
     password: String,
     channel: String,
     cooldown: u64,
-    prefix: String,
-    commands: Vec<String>,
+    commands: HashMap<String, String>,
 }
 
 struct TwitchPlayBot {
@@ -73,9 +79,9 @@ impl TwitchPlayBot {
 
     fn voted_command(&mut self, votes: &mut HashMap<String, usize>) -> Option<String> {
         // reset votes for every command to zero
-        CONFIG.commands.iter().for_each(|k| {
-            votes.entry(k.to_string()).and_modify(|c| *c = 0);
-        });
+        for (_, vote) in votes.iter_mut() {
+            *vote = 0;
+        }
         let start_t = SystemTime::now();
 
         // read lines until no
@@ -128,49 +134,52 @@ impl TwitchPlayBot {
     }
 }
 
-fn cmd_to_key(cmd: String) -> Key {
-    let cmd = cmd.replace(*PREFIX, "");
+fn key_from_string(cmd: String) -> Key {
+    use Key::*;
     match cmd.as_str() {
         c if c.len() == 1 => Key::Layout(c.chars().next().unwrap()),
-        "alt" => Key::Alt,
-        "backspace" => Key::Backspace,
-        "capslock" => Key::CapsLock,
-        "control" => Key::Control,
-        "delete" => Key::Delete,
-        "down" => Key::DownArrow,
-        "end" => Key::End,
-        "esc" => Key::Escape,
-        "f1" => Key::F1,
-        "f2" => Key::F2,
-        "f3" => Key::F3,
-        "f4" => Key::F4,
-        "f5" => Key::F5,
-        "f6" => Key::F6,
-        "f7" => Key::F7,
-        "f8" => Key::F8,
-        "f9" => Key::F9,
-        "f10" => Key::F10,
-        "f11" => Key::F11,
-        "f12" => Key::F12,
-        "home" => Key::Home,
-        "left" => Key::LeftArrow,
-        "meta" => Key::Meta,
-        "option" => Key::Option,
-        "pagedown" => Key::PageDown,
-        "pageup" => Key::PageUp,
-        "return" => Key::Return,
-        "right" => Key::RightArrow,
-        "shift" => Key::Shift,
-        "space" => Key::Space,
-        "tab" => Key::Tab,
-        "up" => Key::UpArrow,
+        "Alt" => Alt,
+        "Backspace" => Backspace,
+        "Capslock" => CapsLock,
+        "Control" => Control,
+        "Delete" => Delete,
+        "DownArrow" => DownArrow,
+        "End" => End,
+        "Escape" => Escape,
+        "F1" => F1,
+        "F2" => F2,
+        "F3" => F3,
+        "F4" => F4,
+        "F5" => F5,
+        "F6" => F6,
+        "F7" => F7,
+        "F8" => F8,
+        "F9" => F9,
+        "F10" => F10,
+        "F11" => F11,
+        "F12" => F12,
+        "Home" => Home,
+        "LeftArrow" => LeftArrow,
+        "Meta" => Meta,
+        "Option" => Key::Option,
+        "PageDown" => PageDown,
+        "PageUp" => PageUp,
+        "Return" => Return,
+        "RightArrow" => RightArrow,
+        "Shift" => Shift,
+        "Space" => Space,
+        "Tab" => Tab,
+        "UpArrow" => UpArrow,
         _ => panic!("Unknown key"),
     }
 }
 fn main() -> std::io::Result<()> {
     assert_ne!(CONFIG.commands.len(), 0);
-    let mut votes: HashMap<String, usize> =
-        CONFIG.commands.iter().map(|cmd| (cmd.clone(), 0)).collect();
+    let mut votes: HashMap<String, usize> = CONFIG
+        .commands
+        .iter()
+        .map(|(cmd, _)| (cmd.clone(), 0))
+        .collect();
     let mut bot = TwitchPlayBot::connect();
     bot.auth();
     let mut enigo = Enigo::new();
@@ -183,7 +192,7 @@ fn main() -> std::io::Result<()> {
             None => bot.send_to_chat(&no_cmds),
             Some(cmd) => {
                 bot.send_to_chat(&format!("Selected command : {cmd}"));
-                enigo.key_click(cmd_to_key(cmd));
+                enigo.key_click(KEY_FROM_CMD.get(&cmd).unwrap().clone());
             }
         }
     }
