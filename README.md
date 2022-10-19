@@ -37,3 +37,7 @@ cooldown = 30
 Install the rust toolchain and compile the project using `cargo build --release`. You may want to add the target flag, for instance with `--target x86_64-pc-windows-gnu` for WSL user that want to compile in order to run it directly in windows.
 
 Then don't forget to add the `config.toml` file in the same directory as the executable file.
+
+## Troubleshouting
+
+If you experience some digits are pressed (or apparently nothing happened) instead of the arrow keys there is a quick fix : **disable your numlock**.
