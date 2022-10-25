@@ -1,4 +1,3 @@
-use enigo::{Enigo, Key, KeyboardControllable};
 use lazy_static::lazy_static;
 use regex::Regex;
 use serde::Deserialize;
@@ -8,6 +7,7 @@ use std::io::prelude::*;
 use std::io::BufReader;
 use std::net::TcpStream;
 use std::time::SystemTime;
+use tfc::{traits::KeyboardContext, Context, Enum, Key};
 
 const URL: &str = "irc.twitch.tv:6667";
 const CONFIG_FILE: &str = "config.toml";
@@ -135,44 +135,10 @@ impl TwitchPlayBot {
 }
 
 fn key_from_string(cmd: String) -> Key {
-    use Key::*;
-    match cmd.as_str() {
-        c if c.len() == 1 => Key::Layout(c.chars().next().unwrap()),
-        "Alt" => Alt,
-        "Backspace" => Backspace,
-        "Capslock" => CapsLock,
-        "Control" => Control,
-        "Delete" => Delete,
-        "DownArrow" => DownArrow,
-        "End" => End,
-        "Escape" => Escape,
-        "F1" => F1,
-        "F2" => F2,
-        "F3" => F3,
-        "F4" => F4,
-        "F5" => F5,
-        "F6" => F6,
-        "F7" => F7,
-        "F8" => F8,
-        "F9" => F9,
-        "F10" => F10,
-        "F11" => F11,
-        "F12" => F12,
-        "Home" => Home,
-        "LeftArrow" => LeftArrow,
-        "Meta" => Meta,
-        "Option" => Key::Option,
-        "PageDown" => PageDown,
-        "PageUp" => PageUp,
-        "Return" => Return,
-        "RightArrow" => RightArrow,
-        "Shift" => Shift,
-        "Space" => Space,
-        "Tab" => Tab,
-        "UpArrow" => UpArrow,
-        _ => panic!("Unknown key"),
-    }
+    println!("cmd = {}", cmd);
+    Key::iter().find(|k| k.identifier_name() == cmd).expect("Key doesn't exist, invalid config should be exact match with Enum Variant name from TFC library.")
 }
+
 fn main() -> std::io::Result<()> {
     assert_ne!(CONFIG.commands.len(), 0);
     let mut votes: HashMap<String, usize> = CONFIG
@@ -182,7 +148,7 @@ fn main() -> std::io::Result<()> {
         .collect();
     let mut bot = TwitchPlayBot::connect();
     bot.auth();
-    let mut enigo = Enigo::new();
+    let mut ctx = Context::new().unwrap();
     let greeting_msg = String::from("Bot is ready for taking chat commands!");
     let no_cmds = String::from("No commands received -> Bot did nothing :/");
     loop {
@@ -192,7 +158,8 @@ fn main() -> std::io::Result<()> {
             None => bot.send_to_chat(&no_cmds),
             Some(cmd) => {
                 bot.send_to_chat(&format!("Selected command : {cmd}"));
-                enigo.key_click(KEY_FROM_CMD.get(&cmd).unwrap().clone());
+                let key = KEY_FROM_CMD.get(&cmd).unwrap().clone();
+                ctx.key_click(key).unwrap();
             }
         }
     }
