@@ -7,7 +7,9 @@ use std::io::prelude::*;
 use std::io::BufReader;
 use std::net::TcpStream;
 use std::time::SystemTime;
-use tfc::{traits::KeyboardContext, Context, Enum, Key};
+use tfc::{traits::KeyboardContext, Context, Key, Enum};
+use std::thread;
+use std::time::Duration;
 
 const URL: &str = "irc.twitch.tv:6667";
 const CONFIG_FILE: &str = "config.toml";
@@ -135,7 +137,7 @@ impl TwitchPlayBot {
 }
 
 fn key_from_string(cmd: String) -> Key {
-    println!("cmd = {}", cmd);
+    println!("cmd = {}",cmd);
     Key::iter().find(|k| k.identifier_name() == cmd).expect("Key doesn't exist, invalid config should be exact match with Enum Variant name from TFC library.")
 }
 
@@ -159,7 +161,9 @@ fn main() -> std::io::Result<()> {
             Some(cmd) => {
                 bot.send_to_chat(&format!("Selected command : {cmd}"));
                 let key = KEY_FROM_CMD.get(&cmd).unwrap().clone();
-                ctx.key_click(key).unwrap();
+                ctx.key_down(key.clone()).unwrap();
+                thread::sleep(Duration::from_millis(10));
+                ctx.key_up(key).unwrap();
             }
         }
     }
