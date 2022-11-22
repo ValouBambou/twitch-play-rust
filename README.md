@@ -27,7 +27,7 @@ cooldown = 30
 
 [commands]
 "left" = "LeftArrow"
-"right" = "RighArrow"
+"right" = "RightArrow"
 "jump" = "Space"
 "pause" = "Escape"
 ```
