@@ -10,4 +10,4 @@ serde = { version = "1.0", features = ["derive"] }
 toml = "0.5.9"
 regex = "1"
 lazy_static = "1.4.0"
-tfc = "0.6.1"
+tfc = "0.6.2"
