@@ -4,16 +4,13 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
 use std::io::prelude::*;
-use std::io::BufReader;
 use std::net::TcpStream;
-use std::time::SystemTime;
-use tfc::{traits::KeyboardContext, Context, Key, Enum};
-use std::thread;
+use std::thread::sleep;
 use std::time::Duration;
+use tfc::{traits::KeyboardContext, Context, Enum, Key};
 
 const URL: &str = "irc.twitch.tv:6667";
 const CONFIG_FILE: &str = "config.toml";
-// const TIMEOUT_SEC: u64 = 5;
 
 lazy_static! {
     static ref CONFIG: Config = toml::from_str(
@@ -40,6 +37,10 @@ lazy_static! {
     static ref CMD_RE: Regex = Regex::new(&CMD_PATTERN).unwrap();
 }
 
+fn key_from_string(cmd: String) -> Key {
+    Key::iter().find(|k| k.identifier_name() == cmd).expect("Key doesn't exist, invalid config should be exact match with Enum Variant name from TFC library.")
+}
+
 #[derive(Deserialize)]
 struct Config {
     name: String,
@@ -51,7 +52,7 @@ struct Config {
 
 struct TwitchPlayBot {
     irc: TcpStream,
-    reader: BufReader<TcpStream>,
+    votes: HashMap<String, usize>,
 }
 
 impl TwitchPlayBot {
@@ -79,36 +80,41 @@ impl TwitchPlayBot {
         self.send_msg(&*JOIN).expect("Auth failed with JOIN msg");
     }
 
-    fn voted_command(&mut self, votes: &mut HashMap<String, usize>) -> Option<String> {
+    fn voted_command(&mut self) -> Option<String> {
         // reset votes for every command to zero
-        for (_, vote) in votes.iter_mut() {
+        for (_, vote) in self.votes.iter_mut() {
             *vote = 0;
         }
-        let start_t = SystemTime::now();
+        // sleep to let chat vote
+        // we sleep less to anticipate the delay of restauring the connection
+        assert!(*COOLDOWN > 0);
+        sleep(Duration::from_millis(1000 * (*COOLDOWN) - 200));
 
-        // read lines until no
-        let mut line = String::default();
-        while self.reader.read_line(&mut line).unwrap() > 0 {
-            println!("Bot received : {}", line);
+        self.irc.shutdown(std::net::Shutdown::Both).unwrap();
+        let mut irc_msgs = String::default();
+        self.irc.read_to_string(&mut irc_msgs).unwrap();
+
+        for line in irc_msgs.split("\r\n") {
+            println!("Bot received: {}", line);
             // answer to server PING msg to keep bot alive
-            if PING_RE.is_match(line.as_str()) {
+            if PING_RE.is_match(line) {
                 self.send_msg(&"PONG :tmi.twitch.tv".to_owned()).unwrap();
             } else if let Some(captures) = CMD_RE.captures(&line) {
                 // check if message is a command or not
                 // get the cmd from the regex capture group CMD_PATTERN
                 let cmd = captures.get(1).unwrap().as_str().to_owned();
                 // update vote
-                votes.entry(cmd).and_modify(|c| *c += 1);
-            }
-            // reset line cause read_line only append stuf
-            line = String::default();
-            if start_t.elapsed().unwrap().as_secs() >= *COOLDOWN {
-                break;
+                self.votes.entry(cmd).and_modify(|c| *c += 1);
             }
         }
-        // select most voted
 
-        let most_voted = votes.iter().max_by(|(_, c1), (_, c2)| c1.cmp(c2));
+        // re connect and authenticate
+        self.irc = TcpStream::connect(URL).expect("Connection failed ;/");
+        self.auth();
+
+        // select most voted
+        let most_voted = self.votes.iter().max_by(|(_, c1), (_, c2)| c1.cmp(c2));
+
         match most_voted {
             None => {
                 println!("Warning : Probably bad config THERE IS NO COMMANDS!");
@@ -127,44 +133,42 @@ impl TwitchPlayBot {
             }
         }
     }
-    fn connect() -> TwitchPlayBot {
-        let irc = TcpStream::connect(URL)
-            .expect("Cannot connect twitch irc server check your internet connection :/");
-        let reader = BufReader::new(irc.try_clone().unwrap());
-        println!("Bot connected to {URL}");
-        TwitchPlayBot { irc, reader }
-    }
-}
 
-fn key_from_string(cmd: String) -> Key {
-    println!("cmd = {}",cmd);
-    Key::iter().find(|k| k.identifier_name() == cmd).expect("Key doesn't exist, invalid config should be exact match with Enum Variant name from TFC library.")
-}
-
-fn main() -> std::io::Result<()> {
-    assert_ne!(CONFIG.commands.len(), 0);
-    let mut votes: HashMap<String, usize> = CONFIG
-        .commands
-        .iter()
-        .map(|(cmd, _)| (cmd.clone(), 0))
-        .collect();
-    let mut bot = TwitchPlayBot::connect();
-    bot.auth();
-    let mut ctx = Context::new().unwrap();
-    let greeting_msg = String::from("Bot is ready for taking chat commands!");
-    let no_cmds = String::from("No commands received -> Bot did nothing :/");
-    loop {
-        bot.send_to_chat(&greeting_msg);
-        let cmd = bot.voted_command(&mut votes);
-        match cmd {
-            None => bot.send_to_chat(&no_cmds),
-            Some(cmd) => {
-                bot.send_to_chat(&format!("Selected command : {cmd}"));
-                let key = KEY_FROM_CMD.get(&cmd).unwrap().clone();
-                ctx.key_down(key.clone()).unwrap();
-                thread::sleep(Duration::from_millis(10));
-                ctx.key_up(key).unwrap();
-            }
+    fn start(&mut self) {
+        let mut ctx = Context::new().unwrap();
+        self.send_to_chat(&"Bot connected ready to received commands !".to_owned());
+        loop {
+            let opt_cmd = self.voted_command();
+            let msg = match opt_cmd {
+                Some(cmd) => {
+                    let key = KEY_FROM_CMD.get(&cmd).unwrap().clone();
+                    ctx.key_down(key.clone()).unwrap();
+                    sleep(Duration::from_millis(10));
+                    ctx.key_up(key).unwrap();
+                    format!("Most voted command : {}", cmd)
+                }
+                None => "No command received, did nothing :/".to_owned(),
+            };
+            self.send_to_chat(&msg);
         }
     }
+
+    fn connect() -> TwitchPlayBot {
+        let votes: HashMap<String, usize> = CONFIG
+            .commands
+            .iter()
+            .map(|(cmd, _)| (cmd.clone(), 0))
+            .collect();
+        let irc = TcpStream::connect(URL)
+            .expect("Cannot connect twitch irc server check your internet connection :/");
+        println!("Bot connected to {URL}");
+        TwitchPlayBot { irc, votes }
+    }
+}
+
+fn main() {
+    assert_ne!(CONFIG.commands.len(), 0);
+    let mut bot = TwitchPlayBot::connect();
+    bot.auth();
+    bot.start();
 }
